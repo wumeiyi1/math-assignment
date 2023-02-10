@@ -1,0 +1,391 @@
+---
+title: "A1"
+author: "Meiyi Wu"
+date: "2023/2/1"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(ggplot2)
+library(jrvFinance)
+library(dplyr)
+```
+
+```{r}
+# import dataset
+select_bonds = read.csv("selectbonds.csv")
+
+#rename necessary column
+colnames(select_bonds)[3] = "2023-01-16"
+colnames(select_bonds)[4] = "2023-01-17"
+colnames(select_bonds)[5] = "2023-01-18"
+colnames(select_bonds)[6] = "2023-01-19"
+colnames(select_bonds)[7] = "2023-01-20"
+colnames(select_bonds)[8] = "2023-01-23"
+colnames(select_bonds)[9] = "2023-01-24"
+colnames(select_bonds)[10] = "2023-01-25"
+colnames(select_bonds)[11] = "2023-01-26"
+colnames(select_bonds)[12] = "2023-01-27"
+```
+
+
+## 4a)
+```{r}
+# create a copy of select_bonds
+ten_bonds = select_bonds
+
+# create a list with all the chosen date
+chosen_date = data.frame(date = c("2023-01-16", "2023-01-17", "2023-01-18", "2023-01-19", "2023-01-20", "2023-01-23", "2023-01-24", "2023-01-25", "2023-01-26", "2023-01-27"))
+```
+
+
+
+```{r}
+# create an empty dataframe to store the value of YTM
+YTM_table = data.frame(Name = ten_bonds$Name,
+                       "Jan_16_2023" = rep(NA, 10),
+                       "Jan_17_2023" = rep(NA, 10),
+                       "Jan_18_2023" = rep(NA, 10),
+                       "Jan_19_2023" = rep(NA, 10),
+                       "Jan_20_2023" = rep(NA, 10),
+                       "Jan_23_2023" = rep(NA, 10),
+                       "Jan_24_2023" = rep(NA, 10),
+                       "Jan_25_2023" = rep(NA, 10),
+                       "Jan_26_2023" = rep(NA, 10),
+                       "Jan_27_2023" = rep(NA, 10))
+
+# calculate YTM for each bond each date, where i represent bond(row), j represent days in column
+for (i in 1:10){
+  for (j in 1:10){
+    # get coupon rate in each bond
+    coupon = ten_bonds$coupon_rate[i] * 0.01
+    # get each bond price
+    bond_value = ten_bonds[i,2+j]
+    # get the settle date
+    c_date = chosen_date[j,1]
+    # get the maturity date
+    m_date = ten_bonds$maturity_date[i]
+    # use the bond.yield() function in the package jrvFinance to calculate the ytm
+    ytm = bond.yield(as.Date(c_date), as.Date(m_date), coupon, freq=2, bond_value)
+    YTM_table[i,1+j] = ytm
+  }
+  }
+```
+
+
+```{r}
+# Transform the table to a long dataset to graph
+long_ytm = YTM_table %>% 
+  pivot_longer(
+    cols = c("Jan_16_2023",
+                       "Jan_17_2023",
+                       "Jan_18_2023",
+                       "Jan_19_2023",
+                       "Jan_20_2023",
+                       "Jan_23_2023",
+                       "Jan_24_2023",
+                       "Jan_25_2023",
+                       "Jan_26_2023",
+                       "Jan_27_2023"),
+    names_to = "day",
+    values_to = "YTM"
+  )
+
+```
+
+```{r}
+# Calculate time to maturity
+ten_bonds <- ten_bonds %>% mutate(time_to_maturity = rep(NA,10))
+
+
+# Calculate time to maturity where i represent row
+for (i in 1:10){
+      mdate = ten_bonds$maturity_date[i]
+      chosen = chosen_date[1, 1]
+      days_to_maturity = as.numeric(difftime(mdate, chosen)) #time diff between current and maturity
+      ten_bonds[i,15] = round(days_to_maturity / 365,1) # time to maturity
+}
+
+
+# get the time_to_maturity_column
+ttm = ten_bonds %>% select(Name, time_to_maturity)
+
+# left join ttm and long_ytm
+long_ytm = left_join(long_ytm, ttm, by = "Name")
+
+```
+
+
+
+```{r}
+# ggplot for yield to maturity vs Year
+ggplot(long_ytm, aes(x = time_to_maturity, y = YTM, colour =day)) + 
+geom_line()+ggtitle("Plot with 5-year yield curve (ytm curve) 
+                    corresponding to each day") +
+  xlab("Time to maturity (years)") + ylab("Yield to maturity") + geom_vline(xintercept = 5, color = "red", size = 1)
+```
+
+
+## 4b)
+
+
+```{r}
+# create a sport rate data frame
+spot_rate = data.frame(
+                                        "2023-01-16" = rep(NA,10),
+                                        "2023-01-17"= rep(NA,10),
+                                        "2023-01-18"= rep(NA,10),
+                                        "2023-01-19"= rep(NA,10),
+                                        "2023-01-20"= rep(NA,10),
+                                        "2023-01-23"= rep(NA,10),
+                                        "2023-01-24"= rep(NA,10),
+                                        "2023-01-25"= rep(NA,10),
+                                        "2023-01-26"= rep(NA,10),
+                                        "2023-01-27"= rep(NA,10))
+# Close bond price
+bond_price_table = ten_bonds %>% select("2023-01-16",
+                                        "2023-01-17",
+                                        "2023-01-18",
+                                        "2023-01-19",
+                                        "2023-01-20",
+                                        "2023-01-23",
+                                        "2023-01-24",
+                                        "2023-01-25",
+                                        "2023-01-26",
+                                        "2023-01-27")
+
+```
+
+
+
+```{r}
+# coupon payment for semi-annual.
+coupon <- ten_bonds$coupon_rate * 1/2 *0.01
+
+# Define a function to calculate the spot rate
+coupon_spot <- function(bond_price_row, time_to_maturity, prev_r_table){
+  # get the num of period
+  num = time_to_maturity / 0.5
+  # case 1 when num = 1, year = 0.5
+  if (num == 1){
+      new_r <- (-log(bond_price_row/(100*coupon[1]+100)))/0.5
+    } else if (num == 2){
+      # case 2 the spot rate when n=2, year = 1
+      aci <- 100 * coupon[2] * exp(-prev_r_table[1,]*(0.5*1))
+      new_r <- log((bond_price_row-aci)/(100*coupon[2] + 100))/((-1/2)*2)
+    }else{
+      # case 3, num >=3, year>=1.5
+      aci <- 100 * coupon[num] * exp(-prev_r_table[1,]*(0.5*1))
+      for (j in (2:(num-1))){
+        aci <- aci + 100 * coupon[num] * exp(-prev_r_table[j,]*(0.5*j))
+      }
+     new_r <- log((bond_price_row-aci)/(100*coupon[num] + 100))/((-1/2)*num)
+    }
+  
+  return (new_r)
+}
+```
+
+```{r}
+# Assign values to spot_r, approximately time to maturity, end with .6 -> 0.5, end with .1->.0
+spot_rate[1,] = coupon_spot(bond_price_table[1,], 0.5, spot_rate)
+spot_rate[2,] = coupon_spot(bond_price_table[2,], 1, spot_rate)
+spot_rate[3,] = coupon_spot(bond_price_table[3,], 1.5, spot_rate)
+spot_rate[4,] = coupon_spot(bond_price_table[4,], 2, spot_rate)
+spot_rate[5,] = coupon_spot(bond_price_table[5,], 2.5, spot_rate)
+spot_rate[6,] = coupon_spot(bond_price_table[6,], 3, spot_rate)
+spot_rate[7,] = coupon_spot(bond_price_table[7,], 3.5, spot_rate)
+spot_rate[8,] = coupon_spot(bond_price_table[8,], 4, spot_rate)
+spot_rate[9,] = coupon_spot(bond_price_table[9,], 4.5, spot_rate)
+spot_rate[10,] = coupon_spot(bond_price_table[10,], 5, spot_rate)
+```
+
+
+
+```{r}
+# rename column to join with the long_ytm table
+colnames(spot_rate)[1] = "Jan_16_2023"
+colnames(spot_rate)[2] = "Jan_17_2023"
+colnames(spot_rate)[3] = "Jan_18_2023"
+colnames(spot_rate)[4] = "Jan_19_2023"
+colnames(spot_rate)[5] = "Jan_20_2023"
+colnames(spot_rate)[6] = "Jan_23_2023"
+colnames(spot_rate)[7] = "Jan_24_2023"
+colnames(spot_rate)[8] = "Jan_25_2023"
+colnames(spot_rate)[9] = "Jan_26_2023"
+colnames(spot_rate)[10] = "Jan_27_2023"
+
+spot_rate = spot_rate %>% mutate(Name = ten_bonds$Name)
+
+# Change into long dataset
+
+long_sr = spot_rate %>% 
+  pivot_longer(
+    cols = c("Jan_16_2023",
+                       "Jan_17_2023",
+                       "Jan_18_2023",
+                       "Jan_19_2023",
+                       "Jan_20_2023",
+                       "Jan_23_2023",
+                       "Jan_24_2023",
+                       "Jan_25_2023",
+                       "Jan_26_2023",
+                       "Jan_27_2023"),
+    names_to = "day",
+    values_to = "spot_rate"
+  )
+
+# Approximate n.6->n.5, n.1 ->n.0
+long_sr = long_sr %>% mutate(Year = c(rep(0.5,10),rep(1,10),rep(1.5,10),rep(2,10),rep(2.5,10),rep(3,10),rep(3.5,10),rep(4,10),rep(4.5,10),rep(5,10)))
+```
+
+
+```{r}
+# ggplot for spot rate vs Year
+ggplot(long_sr, aes(x = Year, y = spot_rate, colour =day)) + 
+geom_line() +
+ggtitle("Plot with a 5-year spot curve 
+                    corresponding to each day") +
+  xlab("Time to maturity (years)") + ylab("Spot rate")
+```
+
+# 4c)
+```{r}
+# Define forward rate function:
+forward_rate <- function(Ti, r1, ri){
+  forward_year <- ri * Ti
+  one_year <- r1 * 1
+  forward_result <- (forward_year-one_year)/(Ti-1)
+  return(forward_result)
+}
+
+forward_rate_table = data.frame("2023-01-16" = rep(NA,4),
+                                        "2023-01-17"= rep(NA,4),
+                                        "2023-01-18"= rep(NA,4),
+                                        "2023-01-19"= rep(NA,4),
+                                        "2023-01-20"= rep(NA,4),
+                                        "2023-01-23"= rep(NA,4),
+                                        "2023-01-24"= rep(NA,4),
+                                        "2023-01-25"= rep(NA,4),
+                                        "2023-01-26"= rep(NA,4),
+                                        "2023-01-27"= rep(NA,4))
+# get a new table with only name and time to maturity
+new_time_col = ten_bonds %>% select(Name, time_to_maturity)
+# Combine the spot_rate table with the previous table by Name
+new_spot_rate_table = left_join(spot_rate,new_time_col, by = "Name")
+
+spot_rate_one = new_spot_rate_table[2,]
+spot_rate_two = new_spot_rate_table[4,]
+spot_rate_three = new_spot_rate_table[6,]
+spot_rate_four = new_spot_rate_table[8,]
+spot_rate_five = new_spot_rate_table[10,]
+
+
+# use forward_rate function to get the forward rate table
+forward_rate_table[1,] = forward_rate(2, spot_rate_one[,1:10], spot_rate_two[,1:10])
+forward_rate_table[2,] = forward_rate(3, spot_rate_one[,1:10], spot_rate_three[,1:10])
+forward_rate_table[3,] = forward_rate(4, spot_rate_one[,1:10], spot_rate_four[,1:10])
+forward_rate_table[4,] = forward_rate(5, spot_rate_one[,1:10], spot_rate_five[,1:10])
+
+# Rename column
+colnames(forward_rate_table)[1] = "Jan_16_2023"
+colnames(forward_rate_table)[2] = "Jan_17_2023"
+colnames(forward_rate_table)[3] = "Jan_18_2023"
+colnames(forward_rate_table)[4] = "Jan_19_2023"
+colnames(forward_rate_table)[5] = "Jan_20_2023"
+colnames(forward_rate_table)[6] = "Jan_23_2023"
+colnames(forward_rate_table)[7] = "Jan_24_2023"
+colnames(forward_rate_table)[8] = "Jan_25_2023"
+colnames(forward_rate_table)[9] = "Jan_26_2023"
+colnames(forward_rate_table)[10] = "Jan_27_2023"
+
+
+
+# change to long dataset
+long_fr = forward_rate_table %>% 
+  pivot_longer(
+    cols = c("Jan_16_2023",
+                       "Jan_17_2023",
+                       "Jan_18_2023",
+                       "Jan_19_2023",
+                       "Jan_20_2023",
+                       "Jan_23_2023",
+                       "Jan_24_2023",
+                       "Jan_25_2023",
+                       "Jan_26_2023",
+                       "Jan_27_2023"),
+    names_to = "day",
+    values_to = "forward_rate"
+  )
+long_fr = long_fr %>% mutate(year = c(rep(1,10),rep(2,10),rep(3,10),rep(4,10)))
+
+```
+
+```{r}
+#graph
+ggplot(long_fr, aes(x = year, y = forward_rate, colour =day)) +  geom_line() +ggtitle("Plot with a forward curve 
+                    corresponding to each day") +
+  xlab("Forward years from year 1") + ylab("Forward rates")
+```
+
+## 5
+```{r}
+# daily log-returns of yield
+daily_log_returns = data.frame(yield1 = rep(0,9),
+                               yield2 = rep(0,9),
+                               yield3 = rep(0,9),
+                               yield4 = rep(0,9),
+                               yield5 = rep(0,9))
+
+# drop Name column
+YTM = YTM_table[,-1]
+# using the provided log formula
+for (i in c(1:9)){
+  daily_log_returns$yield1[i] <- log(YTM[2,i+1]/YTM[2,i])
+  daily_log_returns$yield2[i] <- log(YTM[4,i+1]/YTM[4,i])
+  daily_log_returns$yield3[i] <- log(YTM[6,i+1]/YTM[6,i])
+  daily_log_returns$yield4[i] <- log(YTM[8,i+1]/YTM[8,i])
+  daily_log_returns$yield5[i] <- log(YTM[10,i+1]/YTM[10,i])
+}
+
+# calculate covariance
+dly_covariance_matrix = cov(daily_log_returns,daily_log_returns)
+dly_covariance_matrix
+```
+
+```{r}
+# forward rates
+forward_rates_data = data.frame(rate1 = rep(0,9),
+                               rate2 = rep(0,9),
+                               rate3 = rep(0,9),
+                               rate4 = rep(0,9))
+
+# using the provided log formula
+for (i in c(1:9)){
+  forward_rates_data$rate1[i] <- log(forward_rate_table[1,i+1]/forward_rate_table[1,i])
+  forward_rates_data$rate2[i] <- log(forward_rate_table[2,i+1]/forward_rate_table[2,i])
+  forward_rates_data$rate3[i] <- log(forward_rate_table[3,i+1]/forward_rate_table[3,i])
+  forward_rates_data$rate4[i] <- log(forward_rate_table[4,i+1]/forward_rate_table[4,i])
+}
+
+# calculate covariance
+fwd_covariance_matrix = cov(forward_rates_data,forward_rates_data)
+fwd_covariance_matrix
+```
+## 6
+```{r}
+# round eigenvalue with 8 deci place 
+# Yield
+eigen_value_dly <- round(eigen(dly_covariance_matrix)$values,8)
+e_vector_dly <- eigen(dly_covariance_matrix)$vectors
+
+# forward rate
+eigen_value_fw <- round(eigen(fwd_covariance_matrix)$values,8)
+e_vector_fw <- eigen(fwd_covariance_matrix)$vectors
+```
+
+
+
